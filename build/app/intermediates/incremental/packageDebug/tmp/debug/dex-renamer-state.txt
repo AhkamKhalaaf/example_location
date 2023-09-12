@@ -1,0 +1,4 @@
+#Tue Sep 12 08:06:07 EET 2023
+base.0=/Users/ahkamahkam/Documents/apps/example_location/build/app/intermediates/dex/debug/mergeDexDebug/classes.dex
+path.0=classes.dex
+renamed.0=classes.dex
