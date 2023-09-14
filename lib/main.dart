@@ -11,10 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 @pragma('vm:entry-point')
 void backgroundCallback() {
   BackgroundLocationTrackerManager.handleBackgroundUpdated(
-    (data) async => {
-      Repo().update(data),
-      debugPrint('new_location'),
-    },
+    (data) async => await Repo().update(data),
   );
 }
 
@@ -22,15 +19,16 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await BackgroundLocationTrackerManager.initialize(
     backgroundCallback,
-    config:   const BackgroundLocationTrackerConfig(
+    config: const BackgroundLocationTrackerConfig(
+      loggingEnabled: true,
       androidConfig: AndroidConfig(
-         trackingInterval: Duration(minutes: 5),
-        distanceFilterMeters: 100,
-        enableCancelTrackingAction: false,
+        notificationIcon: 'explore',
+        trackingInterval: Duration(minutes: 4),
+        distanceFilterMeters: null,
       ),
       iOSConfig: IOSConfig(
         activityType: ActivityType.FITNESS,
-        distanceFilterMeters: 100,
+        distanceFilterMeters: null,
         restartAfterKill: true,
       ),
     ),
@@ -50,42 +48,12 @@ class _MyAppState extends State<MyApp> {
 
   Timer? _timer;
   List<String> _locations = [];
-  Location location = new Location();
-
-  bool? _serviceEnabled;
   PermissionStatus? _permissionGranted;
-  LocationData? _locationData;
 
   @override
   void initState() {
     super.initState();
-    startTRack();
-    checkLocation();
-
-    _getTrackingStatus();
-    _startLocationsUpdatesStream();
-  }
-
-  Future<void> startTRack() async {
-    await BackgroundLocationTrackerManager.startTracking();
-  }
-
-  Future<void> checkLocation() async {
-    _serviceEnabled = await location.serviceEnabled();
-    if (!(_serviceEnabled ?? false)) {
-      _serviceEnabled = await location.requestService();
-      if (!(_serviceEnabled ?? false)) {
-        return;
-      }
-    }
-    _permissionGranted = await location.hasPermission();
-    if (_permissionGranted == PermissionStatus.denied) {
-      _permissionGranted = await location.requestPermission();
-      if (_permissionGranted != PermissionStatus.granted) {
-        return;
-      }
-    }
-    debugPrint('${await BackgroundLocationTrackerManager.isTracking()},,isTrackingisTracking');
+    _requestLocationPermission();
   }
 
   @override
@@ -108,18 +76,17 @@ class _MyAppState extends State<MyApp> {
               Expanded(
                 child: Column(
                   children: [
-                    // MaterialButton(
-                    //   child: const Text('Request location permission'),
-                    //   onPressed: _requestLocationPermission,
-                    // ),
-                    // if (Platform.isAndroid) ...[
-                    //   const Text(
-                    //       'Permission on android is only needed starting from sdk 33.'),
-                    // ],
-                    // MaterialButton(
-                    //   child: const Text('Request Notification permission'),
-                    //   onPressed: _requestNotificationPermission,
-                    // ),
+                    MaterialButton(
+                      child: const Text('Request location permission'),
+                      onPressed: _requestLocationPermission,
+                    ),
+                    if (Platform.isAndroid) ...[
+                      const Text('Permission on android is only needed starting from sdk 33.'),
+                    ],
+                    MaterialButton(
+                      child: const Text('Request Notification permission'),
+                      onPressed: () {},
+                    ),
                     MaterialButton(
                       child: const Text('Send notification'),
                       onPressed: () => sendNotification('Hello from another world'),
@@ -190,6 +157,32 @@ class _MyAppState extends State<MyApp> {
     setState(() {});
   }
 
+  Future<void> _requestLocationPermission() async {
+    _permissionGranted = await Location().hasPermission();
+    if (_permissionGranted == PermissionStatus.denied) {
+      _permissionGranted = await Location().requestPermission();
+      if (_permissionGranted != PermissionStatus.granted) {
+        print('NOT GRANTED');
+        return;
+      } else {
+        print('GRANTED');
+      }
+    }
+
+    await BackgroundLocationTrackerManager.startTracking();
+    _getTrackingStatus();
+    _startLocationsUpdatesStream();
+  }
+
+  // Future<void> _requestNotificationPermission() async {
+  //   final result = await Permission.notification.request();
+  //   if (result == PermissionStatus.granted) {
+  //     print('GRANTED'); // ignore: avoid_print
+  //   } else {
+  //     print('NOT GRANTED'); // ignore: avoid_print
+  //   }
+  // }
+
   Future<void> _getLocations() async {
     final locations = await LocationDao().getLocations();
     setState(() {
@@ -252,9 +245,17 @@ class LocationDao {
 void sendNotification(String text) {
   const settings = InitializationSettings(
     android: AndroidInitializationSettings('app_icon'),
+    iOS: DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    ),
   );
   FlutterLocalNotificationsPlugin().initialize(
     settings,
+    onDidReceiveNotificationResponse: (data) async {
+      print('ON CLICK $data'); // ignore: avoid_print
+    },
   );
   FlutterLocalNotificationsPlugin().show(
     Random().nextInt(9999),
@@ -262,6 +263,7 @@ void sendNotification(String text) {
     text,
     const NotificationDetails(
       android: AndroidNotificationDetails('test_notification', 'Test'),
+      iOS: DarwinNotificationDetails(),
     ),
   );
 }
